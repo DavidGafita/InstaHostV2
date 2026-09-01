@@ -1,0 +1,7 @@
+<svg role="img" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+    <title>InstaHost</title>
+    <rect width="32" height="32" rx="4" fill="#79589F"/>
+    <path d="M16 5.2 26 10.6v10.8L16 26.8 6 21.4V10.6L16 5.2Z" fill="#4F3074" opacity=".45"/>
+    <path d="M16 7.1 24.2 11.5v9L16 24.9 7.8 20.5v-9L16 7.1Z" stroke="#F7F3FB" stroke-width="1.2" fill="none"/>
+    <text x="16" y="19.4" text-anchor="middle" fill="#ffffff" font-family="Inter, system-ui, sans-serif" font-size="9.5" font-weight="700">IH</text>
+</svg>

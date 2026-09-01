@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html data-theme="light" lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<script data-navigate-once>
+    // Immediate theme application - runs before any rendering
+    (function () {
+        window.themeAccentForeground = (color) => {
+            const channels = color.match(/[a-f\d]{2}/gi).map(channel => parseInt(channel, 16) * 0.85 + 255 * 0.15);
+            const luminance = channels
+                .map(channel => channel / 255)
+                .map(channel => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
+                .reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
+
+            return luminance > 0.179 ? '#000000' : '#ffffff';
+        };
+        window.applyStoredTheme = () => {
+            const theme = localStorage.theme === 'purple' ? 'custom' : (localStorage.theme || 'light');
+            const themeColor = localStorage.themeColor || '#79589f';
+            const isDark = theme === 'dark' || theme === 'custom' || (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+
+            localStorage.theme = theme;
+            document.documentElement.classList.toggle('dark', isDark);
+            document.documentElement.dataset.theme = theme === 'custom' ? 'custom' : (isDark ? 'dark' : 'light');
+            document.documentElement.style.setProperty('--theme-base-color', themeColor);
+            document.documentElement.style.setProperty('--theme-accent-foreground', window.themeAccentForeground(themeColor));
+            document.querySelector('meta[name=theme-color]')?.setAttribute('content', isDark ? '#101010' : '#ffffff');
+        };
+
+        document.addEventListener('livewire:navigated', window.applyStoredTheme);
+        window.applyStoredTheme();
+    })();
+</script>
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex">
+    <meta name="theme-color" content="#f7f8fb" id="theme-color-meta" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="Description" content="{{ config('brand.description') }}" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="{{ brand_full_name() }}" />
+    <meta name="twitter:description" content="{{ config('brand.description') }}" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="{{ brand_full_name() }}" />
+    <meta property="og:description" content="{{ config('brand.description') }}" />
+    <meta property="og:site_name" content="{{ brand_full_name() }}" />
+    @use('App\Models\InstanceSettings')
+    @php
+
+        $instanceSettings = instanceSettings();
+        $name = null;
+
+        if ($instanceSettings) {
+            $displayName = $instanceSettings->getTitleDisplayName();
+
+            if (strlen($displayName) > 0) {
+                $name = $displayName . ' ';
+            }
+        }
+    @endphp
+    <title>{{ $name }}{{ $title ?? brand_full_name() }}</title>
+    @env('local')
+        <link rel="icon" href="{{ asset('coolify-logo-dev-transparent.png') }}" type="image/png" />
+    @else
+        <link rel="icon" href="{{ asset('coolify-logo.svg') }}" type="image/svg+xml" />
+    @endenv
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    @vite(['resources/js/app.js', 'resources/css/app.css'])
+    <script>
+        // Update theme-color meta tag (non-critical, can run async)
+        const t = localStorage.theme || 'light';
+        const isDark = t === 'dark' || t === 'custom' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.getElementById('theme-color-meta')?.setAttribute('content', isDark ? '#101010' : '#ffffff');
+    </script>
+    <style>
+        [x-cloak] {
+            display: none !important;
+        }
+    </style>
+    @if (config('app.name') == 'Coolify Cloud')
+        <script defer data-domain="app.coolify.io" src="https://analytics.coollabs.io/js/plausible.js"></script>
+        <script src="https://js.sentry-cdn.com/0f8593910512b5cdd48c6da78d4093be.min.js" crossorigin="anonymous"></script>
+    @endif
+    @auth
+        <script type="text/javascript" src="{{ URL::asset('js/echo.js') }}"></script>
+        <script type="text/javascript" src="{{ URL::asset('js/pusher.js') }}"></script>
+        <script type="text/javascript" src="{{ URL::asset('js/apexcharts.js') }}"></script>
+        <script type="text/javascript" src="{{ URL::asset('js/purify.min.js') }}"></script>
+    @endauth
+</head>
+@section('body')
+
+<body class="overflow-y-scroll dark:text-inherit text-black">
+    <x-toast />
+    <x-icon-tooltip />
+    <script data-navigate-once>
+        // Global HTML sanitization function using DOMPurify
+        window.sanitizeHTML = function (html) {
+            if (!html) return '';
+            const URL_RE = /^(https?:|mailto:)/i;
+            const config = {
+                ALLOWED_TAGS: ['a', 'b', 'br', 'code', 'del', 'div', 'em', 'i', 'mark', 'p', 'pre', 's', 'span', 'strong',
+                    'u'
+                ],
+                ALLOWED_ATTR: ['class', 'href', 'target', 'title', 'rel'],
+                ALLOW_DATA_ATTR: false,
+                FORBID_TAGS: ['script', 'object', 'embed', 'applet', 'iframe', 'form', 'input', 'button', 'select',
+                    'textarea', 'details', 'summary', 'dialog', 'style'
+                ],
+                FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur', 'onchange',
+                    'onsubmit', 'ontoggle', 'style'
+                ],
+                KEEP_CONTENT: true,
+                RETURN_DOM: false,
+                RETURN_DOM_FRAGMENT: false,
+                SANITIZE_DOM: true,
+                SANITIZE_NAMED_PROPS: true,
+                SAFE_FOR_TEMPLATES: true,
+                ALLOWED_URI_REGEXP: URL_RE
+            };
+
+            // One-time hook registration (idempotent pattern)
+            if (!window.__dpLinkHook) {
+                DOMPurify.addHook('afterSanitizeAttributes', node => {
+                    // Remove Alpine.js directives to prevent XSS
+                    if (node.hasAttributes && node.hasAttributes()) {
+                        const attrs = Array.from(node.attributes);
+                        attrs.forEach(attr => {
+                            // Remove x-* attributes (Alpine directives)
+                            if (attr.name.startsWith('x-')) {
+                                node.removeAttribute(attr.name);
+                            }
+                            // Remove @* attributes (Alpine event shorthand)
+                            if (attr.name.startsWith('@')) {
+                                node.removeAttribute(attr.name);
+                            }
+                            // Remove :* attributes (Alpine binding shorthand)
+                            if (attr.name.startsWith(':')) {
+                                node.removeAttribute(attr.name);
+                            }
+                        });
+                    }
+
+                    // Existing link sanitization
+                    if (node.nodeName === 'A' && node.hasAttribute('href')) {
+                        const href = node.getAttribute('href') || '';
+                        if (!URL_RE.test(href)) node.removeAttribute('href');
+                        if (node.getAttribute('target') === '_blank') {
+                            node.setAttribute('rel', 'noopener noreferrer');
+                        }
+                    }
+                });
+                window.__dpLinkHook = true;
+            }
+            return DOMPurify.sanitize(html, config);
+        };
+
+        // Initialize theme if not set
+        if (!('theme' in localStorage)) {
+            localStorage.theme = 'light';
+        }
+
+        let theme = localStorage.theme
+        let cpuColor = '#1e90ff'
+        let ramColor = '#00ced1'
+        let textColor = '#ffffff'
+        let editorBackground = '#181818'
+        let editorTheme = 'blackboard'
+
+        function checkTheme() {
+            theme = localStorage.theme
+            if (theme == 'system') {
+                theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+            }
+            if (theme == 'dark' || theme == 'custom') {
+                cpuColor = '#1e90ff'
+                ramColor = '#00ced1'
+                textColor = '#ffffff'
+                editorBackground = '#181818'
+                editorTheme = 'blackboard'
+            } else {
+                cpuColor = '#1e90ff'
+                ramColor = '#00ced1'
+                textColor = '#000000'
+                editorBackground = '#ffffff'
+                editorTheme = null
+            }
+        }
+        @auth
+            window.Pusher = Pusher;
+            const EchoConstructor = typeof Echo === 'function' ? Echo : Echo.default;
+            window.Echo = new EchoConstructor({
+                broadcaster: 'pusher',
+                cluster: "{{ config('constants.pusher.host') }}" || window.location.hostname,
+                key: "{{ config('constants.pusher.app_key') }}" || 'coolify',
+                wsHost: "{{ config('constants.pusher.host') }}" || window.location.hostname,
+                wsPort: "{{ getRealtime() }}",
+                wssPort: "{{ getRealtime() }}",
+                forceTLS: false,
+                encrypted: true,
+                enableStats: false,
+                enableLogging: true,
+                enabledTransports: ['ws', 'wss'],
+                disableStats: true,
+                // Add auto reconnection settings
+                enabledTransports: ['ws', 'wss'],
+                disabledTransports: ['sockjs', 'xhr_streaming', 'xhr_polling'],
+                // Attempt to reconnect on connection lost
+                autoReconnect: true,
+                // Wait 1 second before first reconnect attempt
+                reconnectionDelay: 1000,
+                // Maximum delay between reconnection attempts
+                maxReconnectionDelay: 1000,
+                // Multiply delay by this number for each reconnection attempt
+                reconnectionDelayGrowth: 1,
+                // Maximum number of reconnection attempts
+                maxAttempts: 15
+            });
+        @endauth
+        let checkHealthInterval = null;
+        let checkIfIamDeadInterval = null;
+
+        async function copyToClipboard(text) {
+            try {
+                if (navigator.clipboard?.writeText && window.isSecureContext) {
+                    await navigator.clipboard.writeText(text);
+                } else {
+                    const textarea = document.createElement('textarea');
+                    textarea.value = text;
+                    textarea.setAttribute('readonly', '');
+                    textarea.style.position = 'fixed';
+                    textarea.style.left = '-9999px';
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    const copied = document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    if (!copied) {
+                        throw new Error('Copy command was rejected.');
+                    }
+                }
+                window.Livewire.dispatch('success', 'Copied to clipboard.');
+            } catch (error) {
+                window.Livewire.dispatch('error', 'Failed to copy to clipboard.');
+            }
+        }
+        window.copyToClipboard = copyToClipboard;
+        document.addEventListener('livewire:init', () => {
+            window.Livewire.on('reloadWindow', (timeout) => {
+                if (timeout) {
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, timeout);
+                    return;
+                } else {
+                    window.location.reload();
+                }
+            })
+            window.Livewire.on('info', (message) => {
+                if (typeof message === 'string') {
+                    window.toast('Info', {
+                        type: 'info',
+                        description: message,
+                    })
+                    return;
+                }
+                if (message.length == 1) {
+                    window.toast('Info', {
+                        type: 'info',
+                        description: message[0],
+                    })
+                } else if (message.length == 2) {
+                    window.toast(message[0], {
+                        type: 'info',
+                        description: message[1],
+                    })
+                }
+            })
+            window.Livewire.on('error', (message) => {
+                if (typeof message === 'string') {
+                    window.toast('Error', {
+                        type: 'danger',
+                        description: message,
+                    })
+                    return;
+                }
+                if (message.length == 1) {
+                    window.toast('Error', {
+                        type: 'danger',
+                        description: message[0],
+                    })
+                } else if (message.length == 2) {
+                    window.toast(message[0], {
+                        type: 'danger',
+                        description: message[1],
+                    })
+                }
+            })
+            window.Livewire.on('warning', (message) => {
+                if (typeof message === 'string') {
+                    window.toast('Warning', {
+                        type: 'warning',
+                        description: message,
+                    })
+                    return;
+                }
+                if (message.length == 1) {
+                    window.toast('Warning', {
+                        type: 'warning',
+                        description: message[0],
+                    })
+                } else if (message.length == 2) {
+                    window.toast(message[0], {
+                        type: 'warning',
+                        description: message[1],
+                    })
+                }
+            })
+            window.Livewire.on('success', (message) => {
+                if (typeof message === 'string') {
+                    window.toast('Success', {
+                        type: 'success',
+                        description: message,
+                    })
+                    return;
+                }
+                if (message.length == 1) {
+                    window.toast('Success', {
+                        type: 'success',
+                        description: message[0],
+                    })
+                } else if (message.length == 2) {
+                    window.toast(message[0], {
+                        type: 'success',
+                        description: message[1],
+                    })
+                }
+            })
+        });
+    </script>
+</body>
+@show
+
+</html>
